@@ -91,7 +91,9 @@
     outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.12);
   }
   textarea { resize: vertical; min-height: 60px; }
-  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+  .row-2 > .field { min-width: 0; }
+  .row-2 input, .row-2 select { min-width: 0; }
   .total {
     font-weight: 700; background: #ecfdf5; color: #065f46; padding: 12px;
     border-radius: 10px; text-align: right; border: 1px solid rgba(5,150,105,0.18); margin-top: 4px;
