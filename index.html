@@ -466,7 +466,7 @@
   /* ================= API config (this is a plain static page — no Apps Script templating here) ================= */
   // Paste your deployed Apps Script Web App URL here (Deploy > Manage
   // deployments > Web app > URL). Must end in /exec.
-   var API_URL = 'https://script.google.com/macros/s/AKfycbyw3KqUOAdG71O8W_LdaP7riL-fC9yZUO2RsxDAjqfiz1Duom8gk4gNkuVUP_hyylX_Tw/exec';
+  var API_URL = 'https://marrcotos-dotcom.github.io/rcdb-mobile/';
 
   // Shared password gate (optional server-side feature — see
   // setApiPassword() in Code.gs). Stored locally so it's only asked once
@@ -739,6 +739,22 @@
       for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
       var blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
       var blobUrl = URL.createObjectURL(blob);
+
+      // iOS Safari doesn't respect the `download` attribute on blob URLs —
+      // it just navigates to it instead of saving a file, so the trick
+      // below silently does nothing there. On iOS, open the PDF in
+      // Safari's own viewer instead; the user taps the Share icon there
+      // and picks "Save to Files" — that's the only reliable way to get
+      // a real download on iOS.
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        window.open(blobUrl, '_blank');
+        var msg = document.getElementById('mFormMsg');
+        if (msg) msg.innerHTML += '<br>PDF opened in a new tab — tap the Share icon there, then "Save to Files" to download it.';
+        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 30000);
+        return;
+      }
+
       var a = document.createElement('a'); a.href = blobUrl; a.download = (fileName||'RateCon') + '.pdf';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 2000);
