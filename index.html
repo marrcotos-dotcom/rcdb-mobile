@@ -216,6 +216,23 @@
   .detail-row-label { color: #64748b; flex-shrink: 0; }
   .detail-row-value { color: #1e293b; font-weight: 600; text-align: right; }
 
+  .history-item { padding: 10px 12px; border-bottom: 1px solid #eef1f5; font-size: 12.5px; }
+  .history-item:last-child { border-bottom: none; }
+  .history-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .history-action { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .history-action.act-created     { background: #e0f2fe; color: #0284c7; }
+  .history-action.act-revised     { background: #fef3c7; color: #b45309; }
+  .history-action.act-completed   { background: #d1fae5; color: #047857; }
+  .history-action.act-uncompleted { background: #f1f5f9; color: #64748b; }
+  .history-action.act-deleted     { background: #fee2e2; color: #dc2626; }
+  .history-when { color: #94a3b8; font-size: 11px; }
+  .history-user { color: #94a3b8; font-size: 11px; margin-left: auto; font-weight: 600; }
+  .history-changes { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+  .history-change .hc-field { font-weight: 600; }
+  .history-change .hc-from { color: #dc2626; text-decoration: line-through; }
+  .history-change .hc-arrow { color: #94a3b8; margin: 0 3px; }
+  .history-change .hc-to { color: #047857; font-weight: 700; }
+
   /* Paste sheet specific */
   .leg-toggle { display: flex; gap: 8px; margin-bottom: 10px; }
   .leg-btn { flex: 1; font-size: 13.5px; font-weight: 700; padding: 13px 6px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; color: #475569; }
@@ -1058,6 +1075,7 @@
     document.getElementById('mDetailTitle').textContent = 'Load #' + rec['Load #'];
     var isCompleted = (rec['Completed']===true || rec['Completed']==='TRUE');
     var loadNumEsc = String(rec['Load #']).replace(/'/g, "\\'");
+    var revCount = Number(rec['Revision Count']) || 0;
 
     var actions =
       '<div class="detail-actions">' +
@@ -1066,10 +1084,49 @@
         '<button class="act-delete" onclick="deleteFromDetail(\'' + loadNumEsc + '\')">Delete</button>' +
       '</div>';
 
+    var statusBadge = '';
+    if (rec['Status'] === 'Revised') statusBadge = '<span class="badge badge-revised">REVISED' + (revCount > 0 ? ' ×' + revCount : '') + '</span>';
+    else if (rec['Status']) statusBadge = '<span class="badge badge-generated">' + String(rec['Status']).toUpperCase() + '</span>';
+    if (isCompleted) statusBadge += ' <span class="badge badge-completed">COMPLETED</span>';
+
     var pdfLink = rec['PDF Link'] ? '<a href="' + rec['PDF Link'] + '" target="_blank" style="display:block;text-align:center;padding:12px;background:#ecfdf5;color:#065f46;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;margin-bottom:14px;">Open Rate Con PDF</a>' : '';
 
+    // History timeline — same data the desktop Manage Loads view shows,
+    // just not rendered here before now.
+    var historyHtml = '';
+    var hist = rec['_history'] || [];
+    if (hist.length) {
+      var actClassMap = { 'Created':'act-created', 'Revised':'act-revised', 'Completed':'act-completed', 'Uncompleted':'act-uncompleted', 'Deleted':'act-deleted' };
+      historyHtml =
+        '<div class="detail-section"><div class="detail-section-label">History' +
+          (revCount > 0 ? ' — revised ' + revCount + ' time' + (revCount === 1 ? '' : 's') : '') +
+        '</div><div class="detail-rows">' +
+        hist.map(function(h) {
+          var changesHtml = '';
+          if (h.changes && h.changes.length) {
+            changesHtml = '<div class="history-changes">' + h.changes.map(function(c) {
+              return '<div class="history-change"><span class="hc-field">' + escHtml(c.field) + ':</span> ' +
+                '<span class="hc-from">' + escHtml(c.from || '—') + '</span>' +
+                '<span class="hc-arrow">→</span>' +
+                '<span class="hc-to">' + escHtml(c.to || '—') + '</span></div>';
+            }).join('') + '</div>';
+          }
+          return '<div class="history-item">' +
+            '<div class="history-head">' +
+              '<span class="history-action ' + (actClassMap[h.action] || 'act-uncompleted') + '">' + escHtml(h.action).toUpperCase() + '</span>' +
+              '<span class="history-when">' + escHtml(h.timestamp) + '</span>' +
+              (h.user ? '<span class="history-user">' + escHtml(h.user) + '</span>' : '') +
+            '</div>' +
+            changesHtml +
+          '</div>';
+        }).join('') +
+        '</div></div>';
+    }
+
     document.getElementById('mDetailBody').innerHTML =
-      actions + pdfLink +
+      actions +
+      (statusBadge ? '<div style="margin-bottom:14px;">' + statusBadge + '</div>' : '') +
+      pdfLink +
       '<div class="detail-section"><div class="detail-section-label">Carrier</div><div class="detail-rows">' +
         row('Carrier Name', rec['Carrier Name']) + row('MC#', rec['MC#']) + row('DOT#', rec['DOT#']) +
         row('Driver Name', rec['Driver Name']) + row('Driver Phone', rec['Driver Phone']) + row('Payment Terms', rec['Payment Terms']) +
@@ -1087,7 +1144,8 @@
       '<div class="detail-section"><div class="detail-section-label">Rate</div><div class="detail-rows">' +
         row('Line Haul', money2(rec['Line Haul Rate'])) + row('Fuel Surcharge', money2(rec['Fuel Surcharge'])) +
         '<div class="detail-row"><span class="detail-row-label"><b>Total</b></span><span class="detail-row-value" style="color:#065f46;">' + money2(rec['Total Rate']) + '</span></div>' +
-      '</div></div>';
+      '</div></div>' +
+      historyHtml;
   }
 
   function editFromDetail(loadNum) {
