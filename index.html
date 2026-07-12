@@ -244,7 +244,15 @@
         <div style="text-align:center; margin-bottom:18px;">
           <div class="brand-logo" style="margin:0 auto 14px;">GL</div>
           <div class="brand-title">RCDB</div>
-          <div class="brand-sub">Enter password to continue</div>
+          <div class="brand-sub">Enter your name and password to continue</div>
+        </div>
+        <div class="field">
+          <select id="lockNameInput" style="font-size:16px;">
+            <option value="">-- select your name --</option>
+            <option value="Vitaliy">Vitaliy</option>
+            <option value="Eugene">Eugene</option>
+            <option value="Artem">Artem</option>
+          </select>
         </div>
         <div class="field">
           <input id="lockPwInput" type="password" placeholder="Password" onkeydown="if(event.key==='Enter') submitLockPw();">
@@ -466,7 +474,7 @@
   /* ================= API config (this is a plain static page — no Apps Script templating here) ================= */
   // Paste your deployed Apps Script Web App URL here (Deploy > Manage
   // deployments > Web app > URL). Must end in /exec.
-  var API_URL = 'https://marrcotos-dotcom.github.io/rcdb-mobile/';
+  var API_URL = 'https://script.google.com/macros/s/AKfycbyw3KqUOAdG71O8W_LdaP7riL-fC9yZUO2RsxDAjqfiz1Duom8gk4gNkuVUP_hyylX_Tw/exec';
 
   // Shared password gate (optional server-side feature — see
   // setApiPassword() in Code.gs). Stored locally so it's only asked once
@@ -476,15 +484,31 @@
   function setStoredPw(pw) { localStorage.setItem(PW_STORAGE_KEY, pw); }
   function clearStoredPw() { localStorage.removeItem(PW_STORAGE_KEY); }
 
+  // Name is now one half of a real login credential (paired with a
+  // password checked against Code.gs's MOBILE_USERS_), verified
+  // server-side on every request — not just a self-reported label. This
+  // also gives the History log a trustworthy actor name, since the web
+  // app runs "Execute as: Me" and Session.getActiveUser() there would
+  // otherwise always resolve to the deployer, not whoever's actually
+  // using the app.
+  var NAME_STORAGE_KEY = 'rcdb_actor_name';
+  function getStoredName() { return localStorage.getItem(NAME_STORAGE_KEY) || ''; }
+  function setStoredName(name) { localStorage.setItem(NAME_STORAGE_KEY, name); }
+
   function apiGet(action, params) {
-    var url = API_URL + '?action=' + encodeURIComponent(action) + '&pw=' + encodeURIComponent(getStoredPw());
+    var url = API_URL + '?action=' + encodeURIComponent(action)
+      + '&name=' + encodeURIComponent(getStoredName())
+      + '&pw=' + encodeURIComponent(getStoredPw());
     for (var k in (params || {})) {
       if (params[k] !== undefined && params[k] !== null) url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
     }
     return fetch(url).then(function(r){ return r.json(); }).then(unwrapApiResult_);
   }
   function apiPost(action, body) {
-    return fetch(API_URL + '?action=' + encodeURIComponent(action) + '&pw=' + encodeURIComponent(getStoredPw()), {
+    var url = API_URL + '?action=' + encodeURIComponent(action)
+      + '&name=' + encodeURIComponent(getStoredName())
+      + '&pw=' + encodeURIComponent(getStoredPw());
+    return fetch(url, {
       method: 'POST',
       // text/plain avoids a CORS preflight (OPTIONS) request, which Apps
       // Script web apps don't handle — the server still JSON.parses this.
@@ -516,10 +540,11 @@
   var terminalList = [];
   var terminalListLoaded = false;
 
-  /* ================= Lock screen (shared password gate) ================= */
+  /* ================= Lock screen (shared password + name gate) ================= */
   function tryUnlockWithStoredPw() {
     var stored = getStoredPw();
-    if (!stored) { showLock(); return; }
+    var name = getStoredName();
+    if (!stored || !name) { showLock(); return; }
     // Verify the stored password still works with a cheap real call,
     // rather than trusting it blindly — handles a changed/cleared
     // server-side password gracefully instead of silently failing later.
@@ -534,19 +559,25 @@
   }
   function showLock() {
     document.getElementById('lockOverlay').classList.add('open');
-    setTimeout(function(){ document.getElementById('lockPwInput').focus(); }, 100);
+    var nameInput = document.getElementById('lockNameInput');
+    if (getStoredName()) nameInput.value = getStoredName();
+    setTimeout(function(){ (nameInput.value ? document.getElementById('lockPwInput') : nameInput).focus(); }, 100);
   }
   function hideLock() {
     document.getElementById('lockOverlay').classList.remove('open');
   }
   function submitLockPw() {
+    var nameInput = document.getElementById('lockNameInput');
     var input = document.getElementById('lockPwInput');
     var msg = document.getElementById('lockMsg');
+    var name = nameInput.value.trim();
     var pw = input.value;
+    if (!name) { msg.style.color = '#d93025'; msg.textContent = 'Please enter your name.'; nameInput.focus(); return; }
     if (!pw) return;
     var btn = document.getElementById('lockSubmitBtn');
     btn.disabled = true; msg.style.color = '#64748b'; msg.textContent = 'Checking…';
     setStoredPw(pw);
+    setStoredName(name);
     apiGet('getCarrierList').then(function(){
       btn.disabled = false;
       hideLock();
