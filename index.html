@@ -237,6 +237,24 @@
 </head>
 <body>
 
+  <!-- ============ LOCK SCREEN (shared password gate) ============ -->
+  <div class="sheet-overlay open" id="lockOverlay" style="align-items:center;">
+    <div class="sheet" style="border-radius:20px; max-width:340px; margin:0 16px;">
+      <div class="sheet-body" style="padding:28px 24px;">
+        <div style="text-align:center; margin-bottom:18px;">
+          <div class="brand-logo" style="margin:0 auto 14px;">GL</div>
+          <div class="brand-title">RCDB</div>
+          <div class="brand-sub">Enter password to continue</div>
+        </div>
+        <div class="field">
+          <input id="lockPwInput" type="password" placeholder="Password" onkeydown="if(event.key==='Enter') submitLockPw();">
+        </div>
+        <div id="lockMsg" style="font-size:12.5px; font-weight:600; color:#d93025; min-height:18px; margin:6px 0 10px;"></div>
+        <button type="button" id="lockSubmitBtn" onclick="submitLockPw()" style="width:100%; padding:14px; border-radius:12px; border:none; background:linear-gradient(135deg,#059669 0%,#065f46 100%); color:#fff; font-weight:700; font-size:15px; font-family:inherit;">Unlock</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ HOME ============ -->
   <div class="screen active" id="screen-home">
     <div class="brand">
@@ -448,17 +466,25 @@
   /* ================= API config (this is a plain static page — no Apps Script templating here) ================= */
   // Paste your deployed Apps Script Web App URL here (Deploy > Manage
   // deployments > Web app > URL). Must end in /exec.
-  var API_URL = 'https://script.google.com/macros/s/AKfycbyw3KqUOAdG71O8W_LdaP7riL-fC9yZUO2RsxDAjqfiz1Duom8gk4gNkuVUP_hyylX_Tw/exec';
+   var API_URL = 'https://script.google.com/macros/s/AKfycbyw3KqUOAdG71O8W_LdaP7riL-fC9yZUO2RsxDAjqfiz1Duom8gk4gNkuVUP_hyylX_Tw/exec';
+
+  // Shared password gate (optional server-side feature — see
+  // setApiPassword() in Code.gs). Stored locally so it's only asked once
+  // per device, and sent with every request; the server checks it.
+  var PW_STORAGE_KEY = 'rcdb_pw';
+  function getStoredPw() { return localStorage.getItem(PW_STORAGE_KEY) || ''; }
+  function setStoredPw(pw) { localStorage.setItem(PW_STORAGE_KEY, pw); }
+  function clearStoredPw() { localStorage.removeItem(PW_STORAGE_KEY); }
 
   function apiGet(action, params) {
-    var url = API_URL + '?action=' + encodeURIComponent(action);
+    var url = API_URL + '?action=' + encodeURIComponent(action) + '&pw=' + encodeURIComponent(getStoredPw());
     for (var k in (params || {})) {
       if (params[k] !== undefined && params[k] !== null) url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
     }
     return fetch(url).then(function(r){ return r.json(); }).then(unwrapApiResult_);
   }
   function apiPost(action, body) {
-    return fetch(API_URL + '?action=' + encodeURIComponent(action), {
+    return fetch(API_URL + '?action=' + encodeURIComponent(action) + '&pw=' + encodeURIComponent(getStoredPw()), {
       method: 'POST',
       // text/plain avoids a CORS preflight (OPTIONS) request, which Apps
       // Script web apps don't handle — the server still JSON.parses this.
@@ -490,6 +516,87 @@
   var terminalList = [];
   var terminalListLoaded = false;
 
+  /* ================= Lock screen (shared password gate) ================= */
+  function tryUnlockWithStoredPw() {
+    var stored = getStoredPw();
+    if (!stored) { showLock(); return; }
+    // Verify the stored password still works with a cheap real call,
+    // rather than trusting it blindly — handles a changed/cleared
+    // server-side password gracefully instead of silently failing later.
+    apiGet('getTerminalList').then(function(){
+      hideLock();
+      bootApp();
+    }).catch(function(err){
+      clearStoredPw();
+      showLock();
+      document.getElementById('lockMsg').textContent = 'Session expired — enter password again.';
+    });
+  }
+  function showLock() {
+    document.getElementById('lockOverlay').classList.add('open');
+    setTimeout(function(){ document.getElementById('lockPwInput').focus(); }, 100);
+  }
+  function hideLock() {
+    document.getElementById('lockOverlay').classList.remove('open');
+  }
+  function submitLockPw() {
+    var input = document.getElementById('lockPwInput');
+    var msg = document.getElementById('lockMsg');
+    var pw = input.value;
+    if (!pw) return;
+    var btn = document.getElementById('lockSubmitBtn');
+    btn.disabled = true; msg.style.color = '#64748b'; msg.textContent = 'Checking…';
+    setStoredPw(pw);
+    apiGet('getCarrierList').then(function(){
+      btn.disabled = false;
+      hideLock();
+      bootApp();
+    }).catch(function(err){
+      btn.disabled = false;
+      clearStoredPw();
+      msg.style.color = '#d93025';
+      msg.textContent = 'Wrong password.';
+      input.value = '';
+      input.focus();
+    });
+  }
+
+  /* ================= Boot sequence (runs once unlocked) ================= */
+  var appBooted = false;
+  function bootApp() {
+    if (appBooted) return; // guards against double-boot if unlock fires twice
+    appBooted = true;
+
+    apiGet('getCarrierList').then(function(list){
+      var sel = document.getElementById('mCarrier_Name');
+      sel.innerHTML = '<option value="">-- select --</option>';
+      (list || []).forEach(function(name){
+        var o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o);
+      });
+      if (pendingCarrierValue) { selectCarrierByName(pendingCarrierValue); pendingCarrierValue = null; }
+    }).catch(function(err){ console.error('getCarrierList failed:', err); });
+
+    apiGet('getTerminalList').then(function(list){
+      terminalListLoaded = true; terminalList = list || []; renderPodOptions();
+    }).catch(function(err){ console.error('getTerminalList failed:', err); });
+
+    /* Deep-link support: ?view=form|loads and ?edit=LOADNUM in the URL —
+       read directly from the browser's own URL now, since there's no
+       server-side template to bake these into (this is a plain static page). */
+    var urlParams = new URLSearchParams(window.location.search);
+    var INITIAL_VIEW = (urlParams.get('view') === 'form' || urlParams.get('view') === 'loads') ? urlParams.get('view') : 'home';
+    var PRELOAD_LOAD_NUM = urlParams.get('edit') || '';
+    if (INITIAL_VIEW === 'form') {
+      goForm();
+      if (PRELOAD_LOAD_NUM) {
+        document.getElementById('mRevisionSearch').value = PRELOAD_LOAD_NUM;
+        loadRevision();
+      }
+    } else if (INITIAL_VIEW === 'loads') {
+      goLoads();
+    }
+  }
+
   function selectCarrierByName(name) {
     var sel = document.getElementById('mCarrier_Name');
     if (!name) return false;
@@ -500,34 +607,7 @@
     return false;
   }
 
-  apiGet('getCarrierList').then(function(list){
-    var sel = document.getElementById('mCarrier_Name');
-    sel.innerHTML = '<option value="">-- select --</option>';
-    (list || []).forEach(function(name){
-      var o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o);
-    });
-    if (pendingCarrierValue) { selectCarrierByName(pendingCarrierValue); pendingCarrierValue = null; }
-  }).catch(function(err){ console.error('getCarrierList failed:', err); });
-
-  apiGet('getTerminalList').then(function(list){
-    terminalListLoaded = true; terminalList = list || []; renderPodOptions();
-  }).catch(function(err){ console.error('getTerminalList failed:', err); });
-
-  /* Deep-link support: ?view=form|loads and ?edit=LOADNUM in the URL —
-     read directly from the browser's own URL now, since there's no
-     server-side template to bake these into (this is a plain static page). */
-  var urlParams = new URLSearchParams(window.location.search);
-  var INITIAL_VIEW = (urlParams.get('view') === 'form' || urlParams.get('view') === 'loads') ? urlParams.get('view') : 'home';
-  var PRELOAD_LOAD_NUM = urlParams.get('edit') || '';
-  if (INITIAL_VIEW === 'form') {
-    goForm();
-    if (PRELOAD_LOAD_NUM) {
-      document.getElementById('mRevisionSearch').value = PRELOAD_LOAD_NUM;
-      loadRevision();
-    }
-  } else if (INITIAL_VIEW === 'loads') {
-    goLoads();
-  }
+  tryUnlockWithStoredPw();
 
   function calcTotal() {
     var t = (parseFloat(document.getElementById('mLine_Haul').value)||0)
