@@ -549,6 +549,11 @@
     'mLine_Haul': 'Line Haul Rate', 'mFuel': 'Fuel Surcharge', 'mStops': 'Additional Stops', 'mOther': 'Other'
   };
 
+  // Holds the Load # currently being edited (not a sheet row number — the
+  // server looks the row up fresh by Load # at save time, so a stale row
+  // number can't cause an edit to land on the wrong record). Name kept as
+  // "revisingRow" since it's also used as a plain truthy "am I editing?"
+  // flag throughout this file.
   var revisingRow = null;
   var pendingCarrierValue = null;
   var terminalList = [];
@@ -740,7 +745,7 @@
 
   /* ================= Revise / load existing record ================= */
   function applyRevisionRecord(rec) {
-    revisingRow = rec['_row'];
+    revisingRow = rec['Load #'];
     pendingCarrierValue = rec['Carrier Name'] || '';
     var sel = document.getElementById('mCarrier_Name');
     if (sel.options.length > 1) selectCarrierByName(pendingCarrierValue);
@@ -830,7 +835,7 @@
     var msg = document.getElementById('mFormMsg'); msg.style.color = '#5f6368'; msg.textContent = revisingRow ? 'Updating…' : 'Generating…';
 
     var savePromise = revisingRow
-      ? apiPost('updateRateConForm', { row: revisingRow, data: data })
+      ? apiPost('updateRateConForm', { loadNum: revisingRow, data: data })
       : apiPost('submitRateConForm', { data: data });
 
     savePromise
