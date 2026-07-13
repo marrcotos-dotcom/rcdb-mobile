@@ -510,27 +510,26 @@
   function getStoredName() { return localStorage.getItem(NAME_STORAGE_KEY) || ''; }
   function setStoredName(name) { localStorage.setItem(NAME_STORAGE_KEY, name); }
 
-  function apiGet(action, params) {
-    var url = API_URL + '?action=' + encodeURIComponent(action)
-      + '&name=' + encodeURIComponent(getStoredName())
-      + '&pw=' + encodeURIComponent(getStoredPw());
-    for (var k in (params || {})) {
-      if (params[k] !== undefined && params[k] !== null) url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
-    }
-    return fetch(url).then(function(r){ return r.json(); }).then(unwrapApiResult_);
-  }
-  function apiPost(action, body) {
-    var url = API_URL + '?action=' + encodeURIComponent(action)
-      + '&name=' + encodeURIComponent(getStoredName())
-      + '&pw=' + encodeURIComponent(getStoredPw());
-    return fetch(url, {
+  // Every call — reads included — goes out as a POST with the action,
+  // credentials, and arguments in the JSON body. Nothing sensitive ever
+  // appears in the URL, so passwords can't leak via browser history,
+  // proxy logs, or server request logs.
+  function apiCall_(action, extra) {
+    var payload = Object.assign({
+      action: action,
+      name: getStoredName(),
+      pw: getStoredPw()
+    }, extra || {});
+    return fetch(API_URL, {
       method: 'POST',
       // text/plain avoids a CORS preflight (OPTIONS) request, which Apps
       // Script web apps don't handle — the server still JSON.parses this.
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(payload)
     }).then(function(r){ return r.json(); }).then(unwrapApiResult_);
   }
+  function apiGet(action, params) { return apiCall_(action, params); }
+  function apiPost(action, body)  { return apiCall_(action, body); }
   function unwrapApiResult_(res) {
     if (!res || res.ok !== true) throw new Error((res && res.error) || 'Unknown API error');
     return res.result;
@@ -679,13 +678,19 @@
     label.className = 'stop-row-label'; label.textContent = 'Stop ' + (count + 2);
     var row = document.createElement('div');
     row.className = 'stop-row'; row.dataset.idx = idx;
+    // Static markup only — saved stop values (untrusted sheet data) are
+    // assigned via the .value property afterwards, which can't break out
+    // of the attribute the way string concatenation could.
     row.innerHTML =
-      '<input placeholder="Name" data-f="name" value="' + (values.name||'') + '">' +
-      '<input placeholder="Address" data-f="address" value="' + (values.address||'') + '">' +
-      '<input placeholder="City" data-f="city" value="' + (values.city||'') + '">' +
-      '<input type="date" data-f="date" value="' + (values.date||'') + '">' +
-      '<input placeholder="Time" data-f="time" value="' + (values.time||'') + '">' +
+      '<input placeholder="Name" data-f="name">' +
+      '<input placeholder="Address" data-f="address">' +
+      '<input placeholder="City" data-f="city">' +
+      '<input type="date" data-f="date">' +
+      '<input placeholder="Time" data-f="time">' +
       '<button type="button" class="removeStopBtn" onclick="removeStopRow(this)">✕</button>';
+    row.querySelectorAll('input[data-f]').forEach(function(inp){
+      inp.value = values[inp.dataset.f] || '';
+    });
     wrap.appendChild(label); wrap.appendChild(row); container.appendChild(wrap);
     updateAddStopBtn(prefix);
   }
@@ -831,7 +836,9 @@
     savePromise
       .then(function(res){
         msg.style.color = '#188038';
-        msg.innerHTML = 'Load #' + res.rateCon + (revisingRow ? ' updated. ' : ' created. ') + '<a href="' + res.url + '" target="_blank">Open PDF</a>';
+        var safeUrl = /^https:\/\//i.test(res.url || '') ? escHtml(res.url) : '';
+        msg.innerHTML = 'Load #' + escHtml(res.rateCon) + (revisingRow ? ' updated. ' : ' created. ')
+          + (safeUrl ? '<a href="' + safeUrl + '" target="_blank" rel="noopener">Open PDF</a>' : '');
         btn.disabled = false; btn.textContent = revisingRow ? 'Update & Regenerate PDF' : 'Save Another';
         if (res.pdfBase64) downloadPdfToDevice(res.pdfBase64, res.fileName || ('RateCon_' + res.rateCon));
         if (!revisingRow) clearForm();
@@ -1012,27 +1019,30 @@
     document.getElementById('mLoadsList').innerHTML = '<div class="spinner"></div>';
     apiGet('getAllLoadsForView')
       .then(function(loads){ allLoads = loads || []; renderLoadsList(allLoads); })
-      .catch(function(err){ document.getElementById('mLoadsList').innerHTML = '<div class="no-results">Error: ' + err.message + '</div>'; });
+      .catch(function(err){ document.getElementById('mLoadsList').innerHTML = '<div class="no-results">Error: ' + escHtml(err.message) + '</div>'; });
   }
   function renderLoadsList(loads) {
     var c = document.getElementById('mLoadsList');
     if (!loads.length) { c.innerHTML = allLoads.length ? '<div class="no-results">No loads match your search</div>' : '<div class="empty-state">No loads yet</div>'; return; }
+    // Everything that came from the spreadsheet goes through escHtml()
+    // before touching innerHTML — sheet data is user-entered and must be
+    // treated as untrusted (stored-XSS protection).
     c.innerHTML = loads.map(function(l){
       var carrier = l.carrier || 'Unknown Carrier';
       var color = getAvatarColor(carrier); var initials = getInitials(carrier);
       var fromCity = l.shipperCity || l.shipperName || '—'; var toCity = l.consigneeCity || l.consigneeName || '—';
       var badges = '';
-      if (l.loadType) badges += '<span class="badge badge-type">' + String(l.loadType).toUpperCase() + '</span>';
-      if (l.status==='Revised') badges += '<span class="badge badge-revised">REVISED' + (l.revisions>0?' ×'+l.revisions:'') + '</span>';
-      else if (l.status) badges += '<span class="badge badge-generated">' + String(l.status).toUpperCase() + '</span>';
+      if (l.loadType) badges += '<span class="badge badge-type">' + escHtml(String(l.loadType).toUpperCase()) + '</span>';
+      if (l.status==='Revised') badges += '<span class="badge badge-revised">REVISED' + (l.revisions>0?' ×'+escHtml(l.revisions):'') + '</span>';
+      else if (l.status) badges += '<span class="badge badge-generated">' + escHtml(String(l.status).toUpperCase()) + '</span>';
       if (l.completed) badges += '<span class="badge badge-completed">DONE</span>';
-      var loadNumEsc = String(l.loadNum).replace(/'/g, "\\'");
+      var loadNumEsc = escHtml(String(l.loadNum).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
       return '<div class="load-card" onclick="openDetailSheet(\'' + loadNumEsc + '\')">' +
-        '<div class="avatar" style="background:' + color + '">' + initials + '</div>' +
+        '<div class="avatar" style="background:' + color + '">' + escHtml(initials) + '</div>' +
         '<div class="card-main">' +
-          '<div class="card-top"><span class="load-num">Load #' + l.loadNum + '</span>' + (l.pro?'<span class="load-date">PRO '+l.pro+'</span>':'') + '<span class="load-date">'+(l.date||'')+'</span></div>' +
-          '<div class="carrier-name">' + carrier + '</div>' +
-          '<div class="route"><span class="material-icons-round">trip_origin</span>' + fromCity + '<span class="material-icons-round">arrow_forward</span>' + toCity + '</div>' +
+          '<div class="card-top"><span class="load-num">Load #' + escHtml(l.loadNum) + '</span>' + (l.pro?'<span class="load-date">PRO '+escHtml(l.pro)+'</span>':'') + '<span class="load-date">'+escHtml(l.date||'')+'</span></div>' +
+          '<div class="carrier-name">' + escHtml(carrier) + '</div>' +
+          '<div class="route"><span class="material-icons-round">trip_origin</span>' + escHtml(fromCity) + '<span class="material-icons-round">arrow_forward</span>' + escHtml(toCity) + '</div>' +
         '</div>' +
         '<div class="card-right"><div class="rate">' + money(l.total) + '</div><div class="badges">' + badges + '</div></div>' +
       '</div>';
@@ -1056,7 +1066,7 @@
     document.getElementById('mDetailBody').innerHTML = '<div class="spinner"></div>';
     apiGet('getLoadDetailForView', { loadNum: loadNum })
       .then(renderDetail)
-      .catch(function(err){ document.getElementById('mDetailBody').innerHTML = '<div class="no-results">Error: ' + err.message + '</div>'; });
+      .catch(function(err){ document.getElementById('mDetailBody').innerHTML = '<div class="no-results">Error: ' + escHtml(err.message) + '</div>'; });
   }
   function closeDetailSheet() { document.getElementById('mDetailOverlay').classList.remove('open'); }
 
@@ -1072,7 +1082,7 @@
     document.getElementById('mDetailAvatar').textContent = getInitials(carrier);
     document.getElementById('mDetailTitle').textContent = 'Load #' + rec['Load #'];
     var isCompleted = (rec['Completed']===true || rec['Completed']==='TRUE');
-    var loadNumEsc = String(rec['Load #']).replace(/'/g, "\\'");
+    var loadNumEsc = escHtml(String(rec['Load #']).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
     var revCount = Number(rec['Revision Count']) || 0;
 
     var actions =
@@ -1084,10 +1094,14 @@
 
     var statusBadge = '';
     if (rec['Status'] === 'Revised') statusBadge = '<span class="badge badge-revised">REVISED' + (revCount > 0 ? ' ×' + revCount : '') + '</span>';
-    else if (rec['Status']) statusBadge = '<span class="badge badge-generated">' + String(rec['Status']).toUpperCase() + '</span>';
+    else if (rec['Status']) statusBadge = '<span class="badge badge-generated">' + escHtml(String(rec['Status']).toUpperCase()) + '</span>';
     if (isCompleted) statusBadge += ' <span class="badge badge-completed">COMPLETED</span>';
 
-    var pdfLink = rec['PDF Link'] ? '<a href="' + rec['PDF Link'] + '" target="_blank" style="display:block;text-align:center;padding:12px;background:#ecfdf5;color:#065f46;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;margin-bottom:14px;">Open Rate Con PDF</a>' : '';
+    // Only render the link if it's a real https URL, and escape it — a
+    // poisoned sheet cell must not be able to inject markup or a
+    // javascript: URL here.
+    var pdfHref = /^https:\/\//i.test(rec['PDF Link'] || '') ? escHtml(rec['PDF Link']) : '';
+    var pdfLink = pdfHref ? '<a href="' + pdfHref + '" target="_blank" rel="noopener" style="display:block;text-align:center;padding:12px;background:#ecfdf5;color:#065f46;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;margin-bottom:14px;">Open Rate Con PDF</a>' : '';
 
     // History timeline — same data the desktop Manage Loads view shows,
     // just not rendered here before now.
