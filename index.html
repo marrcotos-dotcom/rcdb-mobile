@@ -130,6 +130,32 @@
   .status-text { font-size: 14px; font-weight: 600; }
   #mCompletedDateLabel { font-size: 11px; color: #64748b; }
 
+  .stats-charges-note { font-size: 11px; color: #94a3b8; margin: -4px 0 8px; line-height: 1.4; }
+  .stats-subtotal {
+    font-weight: 600; background: #f8fafc; color: #475569;
+    padding: 10px 12px; border-radius: 12px; text-align: right;
+    border: 1px dashed #cbd5e1; font-size: 13px; margin-top: 4px;
+  }
+  .rating-row { display: flex; gap: 6px; margin-top: 4px; }
+  .rating-pill {
+    flex: 1; font-size: 12px; font-weight: 700; padding: 10px 0; border-radius: 10px;
+    border: 1.5px solid #e2e8f0; background: #fff; color: #475569;
+  }
+  .rating-pill.active { background: #d1fae5; border-color: #059669; color: #065f46; }
+  .cancel-row {
+    display: none; flex-direction: column; gap: 10px; margin: 4px 0 16px;
+    padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 14px;
+  }
+  .cancel-row.open { display: flex; }
+  .eta-box {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 12px; font-size: 12px; color: #334155; margin-bottom: 16px;
+  }
+  .eta-box span { display: block; margin-bottom: 8px; }
+  #mEtaPreviewBtn {
+    width: 100%; background: #f1f5f9; color: #334155; padding: 9px; font-size: 12.5px; border-radius: 9px; border: none; font-weight: 600;
+  }
+
   #mPasteBtn {
     width: 100%; background: #fff; color: #065f46; border: 1px dashed #6ee7b7;
     padding: 12px; border-radius: 12px; font-weight: 700; font-size: 14px; margin-bottom: 14px;
@@ -404,6 +430,65 @@
       </div>
       <div class="total" id="mTotalDisplay">TOTAL: $0.00</div>
 
+      <h3>Additional Charges (stats only)</h3>
+      <div class="stats-charges-note">Recorded for internal reporting only — these do NOT change the Rate Con PDF or its printed total.</div>
+      <div class="row-2">
+        <div class="field"><label>Detention ($)</label><input id="mDetention_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
+        <div class="field"><label>Layover ($)</label><input id="mLayover_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Lumper Fee ($)</label><input id="mLumper_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
+        <div class="field"><label>Scale ($)</label><input id="mScale_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
+      </div>
+      <div class="field"><label>Other ($)</label><input id="mOther_Charges_Stats" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
+      <div class="stats-subtotal" id="mStatsSubtotalDisplay">Stats subtotal: $0.00</div>
+
+      <h3>Analytics (not shown on Rate Con)</h3>
+      <div class="row-2">
+        <div class="field"><label>DAT Spot Rate ($)</label><input id="mDAT_Spot_Rate" type="number" step="0.01"></div>
+        <div class="field"><label>Declared Deadhead (mi)</label><input id="mDeclared_Deadhead_Miles" type="number" step="1" oninput="clearEtaPreview()"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Pickup Late</label><select id="mPickup_Late"></select></div>
+        <div class="field"><label>Delivery Late</label><select id="mDelivery_Late"></select></div>
+      </div>
+      <div class="field">
+        <label>Carrier Responsiveness</label>
+        <div class="rating-row" id="mResponsivenessRow"></div>
+        <input type="hidden" id="mResponsiveness_Rating">
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Driver Name</label><input id="mDriver_Name"></div>
+        <div class="field"><label>Driver Phone</label><input id="mDriver_Phone"></div>
+      </div>
+
+      <div class="status-strip">
+        <label class="switch">
+          <input type="checkbox" id="mCancelled" onchange="toggleCancelRow()">
+          <span class="switch-slider"></span>
+        </label>
+        <span class="status-text">Load was cancelled</span>
+      </div>
+      <div class="cancel-row" id="mCancelRow">
+        <div class="field">
+          <label>Cancel Reason</label>
+          <select id="mCancel_Reason_Select" onchange="onCancelReasonSelect()"></select>
+        </div>
+        <div class="field" id="mCancelReasonCustomWrap" style="display:none;">
+          <label>Custom reason (added as a future option)</label>
+          <input id="mCancel_Reason_Custom" placeholder="Type the reason...">
+        </div>
+      </div>
+
+      <div class="row-2">
+        <div class="field"><label>Loading Time (hrs)</label><input id="mLoading_Time_Hrs" type="number" step="0.25" oninput="clearEtaPreview()"></div>
+        <div class="field"><label>Unloading Time (hrs)</label><input id="mUnloading_Time_Hrs" type="number" step="0.25" oninput="clearEtaPreview()"></div>
+      </div>
+      <div class="eta-box">
+        <span id="mEtaPreviewText">Trip distance &amp; time are calculated automatically on save (50 mph estimate).</span>
+        <button type="button" id="mEtaPreviewBtn" onclick="previewEta()">Preview ETA</button>
+      </div>
+
     </div>
     <div id="mFormMsg"></div>
     <div class="bottombar">
@@ -546,8 +631,112 @@
     'mConsignee_Name': 'Consignee Name', 'mConsignee_Address': 'Consignee Address', 'mConsignee_City': 'Consignee City',
     'mDelivery_Date': 'Delivery Date', 'mDelivery_Time': 'Delivery Time', 'mDelivery_PO': 'Delivery PO#',
     'mDelivery_Instr': 'Delivery Special Instructions',
-    'mLine_Haul': 'Line Haul Rate', 'mFuel': 'Fuel Surcharge', 'mStops': 'Additional Stops', 'mOther': 'Other'
+    'mLine_Haul': 'Line Haul Rate', 'mFuel': 'Fuel Surcharge', 'mStops': 'Additional Stops', 'mOther': 'Other',
+
+    'mDetention_Fee': 'Detention Fee', 'mLayover_Fee': 'Layover Fee', 'mLumper_Fee': 'Lumper Fee',
+    'mScale_Fee': 'Scale Fee', 'mOther_Charges_Stats': 'Other Charges (Stats)',
+
+    'mDAT_Spot_Rate': 'DAT Spot Rate', 'mPickup_Late': 'Pickup Late', 'mDelivery_Late': 'Delivery Late',
+    'mDeclared_Deadhead_Miles': 'Declared Deadhead Miles',
+    'mDriver_Name': 'Driver Name', 'mDriver_Phone': 'Driver Phone',
+    'mLoading_Time_Hrs': 'Loading Time (hrs)', 'mUnloading_Time_Hrs': 'Unloading Time (hrs)'
   };
+  // Handled outside FIELD_MAP (custom widgets, not a plain input 1:1 with a
+  // header): mCancelled / mCancel_Reason_Select / mResponsiveness_Rating.
+  var LATE_OPTIONS = ['On Time', 'Late < 30 min', 'Late 30-60 min', 'Late 1-3 hrs', 'Late > 3 hrs'];
+
+  function populateLateSelect(id) {
+    var sel = document.getElementById(id);
+    sel.innerHTML = '';
+    LATE_OPTIONS.forEach(function(opt) {
+      var o = document.createElement('option');
+      o.value = opt; o.textContent = opt;
+      sel.appendChild(o);
+    });
+  }
+  populateLateSelect('mPickup_Late');
+  populateLateSelect('mDelivery_Late');
+
+  function calcStatsSubtotal() {
+    var t = (parseFloat(document.getElementById('mDetention_Fee').value)||0)
+          + (parseFloat(document.getElementById('mLayover_Fee').value)||0)
+          + (parseFloat(document.getElementById('mLumper_Fee').value)||0)
+          + (parseFloat(document.getElementById('mScale_Fee').value)||0)
+          + (parseFloat(document.getElementById('mOther_Charges_Stats').value)||0);
+    document.getElementById('mStatsSubtotalDisplay').textContent = 'Stats subtotal: $' + t.toFixed(2);
+  }
+
+  function renderRatingPills() {
+    var wrap = document.getElementById('mResponsivenessRow');
+    var current = document.getElementById('mResponsiveness_Rating').value;
+    var labels = ['1', '2', '3', '4', '5'];
+    wrap.innerHTML = labels.map(function(label, i) {
+      var v = i + 1;
+      var active = (String(v) === String(current));
+      return '<button type="button" class="rating-pill' + (active ? ' active' : '') + '" onclick="selectRating(' + v + ')">' + label + '</button>';
+    }).join('');
+  }
+  function selectRating(v) {
+    var current = document.getElementById('mResponsiveness_Rating').value;
+    document.getElementById('mResponsiveness_Rating').value = (String(current) === String(v)) ? '' : v;
+    renderRatingPills();
+  }
+  renderRatingPills();
+
+  var cancelReasonList = [];
+  var pendingCancelReasonValue = null;
+  function loadCancelReasons() {
+    apiGet('getCancelReasonList').then(function(list) {
+      cancelReasonList = list || [];
+      renderCancelReasonSelect(pendingCancelReasonValue || '');
+      pendingCancelReasonValue = null;
+    }).catch(function(){ /* CancelReasons sheet may not exist yet */ });
+  }
+  function renderCancelReasonSelect(selected) {
+    var sel = document.getElementById('mCancel_Reason_Select');
+    sel.innerHTML = '<option value="">-- select --</option>';
+    cancelReasonList.forEach(function(r) {
+      var o = document.createElement('option');
+      o.value = r; o.textContent = r;
+      sel.appendChild(o);
+    });
+    var otherOpt = document.createElement('option');
+    otherOpt.value = '__custom__'; otherOpt.textContent = 'Other (type in)...';
+    sel.appendChild(otherOpt);
+    if (selected) {
+      var found = cancelReasonList.some(function(r){ return r === selected; });
+      sel.value = found ? selected : '__custom__';
+      if (!found) document.getElementById('mCancel_Reason_Custom').value = selected;
+    }
+    onCancelReasonSelect();
+  }
+  function onCancelReasonSelect() {
+    var isCustom = document.getElementById('mCancel_Reason_Select').value === '__custom__';
+    document.getElementById('mCancelReasonCustomWrap').style.display = isCustom ? 'flex' : 'none';
+  }
+  function toggleCancelRow() {
+    document.getElementById('mCancelRow').classList.toggle('open', document.getElementById('mCancelled').checked);
+  }
+
+  function clearEtaPreview() {
+    document.getElementById('mEtaPreviewText').textContent = 'Trip distance & time are calculated automatically on save (50 mph estimate).';
+  }
+  function previewEta() {
+    var el = document.getElementById('mEtaPreviewText');
+    el.textContent = 'Calculating…';
+    apiGet('estimateTripDetails', {
+      shipperCity: val('mShipper_City'),
+      consigneeCity: val('mConsignee_City'),
+      loadingHrs: val('mLoading_Time_Hrs'),
+      unloadingHrs: val('mUnloading_Time_Hrs'),
+      deadheadMiles: val('mDeclared_Deadhead_Miles')
+    }).then(function(res) {
+      var milesTxt = (res.tripMiles === '' || res.tripMiles === null) ? "unknown (couldn't look up the route)" : (res.tripMiles + ' mi');
+      el.textContent = 'Est. distance: ' + milesTxt + ' · Est. time: ' + res.estimatedHours + ' hrs';
+    }).catch(function(err) {
+      el.textContent = 'Could not estimate: ' + err.message;
+    });
+  }
 
   // Holds the Load # currently being edited (not a sheet row number — the
   // server looks the row up fresh by Load # at save time, so a stale row
@@ -629,6 +818,8 @@
     apiGet('getTerminalList').then(function(list){
       terminalListLoaded = true; terminalList = list || []; renderPodOptions();
     }).catch(function(err){ console.error('getTerminalList failed:', err); });
+
+    loadCancelReasons();
 
     /* Deep-link support: ?view=form|loads and ?edit=LOADNUM in the URL —
        read directly from the browser's own URL now, since there's no
@@ -763,6 +954,21 @@
     document.getElementById('mCompleted').checked =
       (rec['Completed'] === true || rec['Completed'] === 'TRUE' || rec['Completed'] === 'true');
     updateCompletedDateLabel(rec['Completed Date']);
+
+    document.getElementById('mCancelled').checked =
+      (rec['Cancelled'] === true || rec['Cancelled'] === 'TRUE' || rec['Cancelled'] === 'true');
+    toggleCancelRow();
+    if (cancelReasonList.length) {
+      renderCancelReasonSelect(rec['Cancel Reason'] || '');
+    } else {
+      pendingCancelReasonValue = rec['Cancel Reason'] || '';
+      document.getElementById('mCancel_Reason_Custom').value = rec['Cancel Reason'] || '';
+    }
+    document.getElementById('mResponsiveness_Rating').value = rec['Responsiveness Rating'] || '';
+    renderRatingPills();
+    calcStatsSubtotal();
+    clearEtaPreview();
+
     document.getElementById('mModeBanner').style.display = 'block';
     document.getElementById('mModeRateCon').textContent = rec['Load #'];
     document.getElementById('mSaveBtn').textContent = 'Update & Regenerate PDF';
@@ -825,11 +1031,28 @@
       var m = document.getElementById('mFormMsg'); m.style.color = '#d93025'; m.textContent = 'Missing: ' + missing.join(', ');
       return;
     }
+    if (document.getElementById('mCancelled').checked) {
+      var selVal = document.getElementById('mCancel_Reason_Select').value;
+      var reasonReady = selVal && (selVal !== '__custom__' || val('mCancel_Reason_Custom').trim());
+      if (!reasonReady) {
+        var m2 = document.getElementById('mFormMsg'); m2.style.color = '#d93025';
+        m2.textContent = 'Load is marked Cancelled — please pick or type a Cancel Reason.';
+        document.getElementById('mCancel_Reason_Select').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+    }
     var data = {};
     for (var fid in FIELD_MAP) { data[FIELD_MAP[fid]] = val(fid); }
     data['Completed'] = document.getElementById('mCompleted').checked;
     data['Pickup Extra Stops'] = JSON.stringify(collectStops('Pickup'));
     data['Delivery Extra Stops'] = JSON.stringify(collectStops('Delivery'));
+
+    data['Cancelled'] = document.getElementById('mCancelled').checked;
+    var cancelSelectVal = document.getElementById('mCancel_Reason_Select').value;
+    data['Cancel Reason'] = data['Cancelled']
+      ? (cancelSelectVal === '__custom__' ? val('mCancel_Reason_Custom').trim() : cancelSelectVal)
+      : '';
+    data['Responsiveness Rating'] = val('mResponsiveness_Rating');
 
     var btn = document.getElementById('mSaveBtn'); btn.disabled = true;
     var msg = document.getElementById('mFormMsg'); msg.style.color = '#5f6368'; msg.textContent = revisingRow ? 'Updating…' : 'Generating…';
@@ -855,11 +1078,21 @@
     for (var id in FIELD_MAP) {
       if (id === 'mCarrier_Name') { document.getElementById(id).value = ''; continue; }
       if (id === 'mLoad_Type') { document.getElementById(id).value = 'FTL'; continue; }
+      if (id === 'mPickup_Late' || id === 'mDelivery_Late') { document.getElementById(id).value = 'On Time'; continue; }
       document.getElementById(id).value = '';
     }
     document.getElementById('mCompleted').checked = false;
     updateCompletedDateLabel('');
     clearStops('Pickup'); clearStops('Delivery'); calcTotal();
+    calcStatsSubtotal();
+
+    document.getElementById('mCancelled').checked = false;
+    toggleCancelRow();
+    renderCancelReasonSelect('');
+    document.getElementById('mCancel_Reason_Custom').value = '';
+    document.getElementById('mResponsiveness_Rating').value = '';
+    renderRatingPills();
+    clearEtaPreview();
   }
   function resetForm() {
     if (!window.confirm('Clear all fields on this form? Anything typed but not saved will be lost.')) return;
@@ -1161,6 +1394,23 @@
       '<div class="detail-section"><div class="detail-section-label">Rate</div><div class="detail-rows">' +
         row('Line Haul', money2(rec['Line Haul Rate'])) + row('Fuel Surcharge', money2(rec['Fuel Surcharge'])) +
         '<div class="detail-row"><span class="detail-row-label"><b>Total</b></span><span class="detail-row-value" style="color:#065f46;">' + money2(rec['Total Rate']) + '</span></div>' +
+      '</div></div>' +
+      '<div class="detail-section"><div class="detail-section-label">Additional Charges (stats only)</div><div class="detail-rows">' +
+        row('Detention', money2(rec['Detention Fee'])) + row('Layover', money2(rec['Layover Fee'])) +
+        row('Lumper Fee', money2(rec['Lumper Fee'])) + row('Scale', money2(rec['Scale Fee'])) +
+        row('Other', money2(rec['Other Charges (Stats)'])) +
+        '<div class="detail-row"><span class="detail-row-label"><b>Subtotal</b></span><span class="detail-row-value">' + money2(rec['Additional Charges Total']) + '</span></div>' +
+      '</div></div>' +
+      '<div class="detail-section"><div class="detail-section-label">Load Analytics</div><div class="detail-rows">' +
+        row('DAT Spot Rate', rec['DAT Spot Rate'] ? money2(rec['DAT Spot Rate']) : '—') +
+        row('Pickup Late', rec['Pickup Late'] || '—') + row('Delivery Late', rec['Delivery Late'] || '—') +
+        row('Cancelled', (rec['Cancelled'] === true || rec['Cancelled'] === 'TRUE') ? ('Yes — ' + (rec['Cancel Reason'] || 'no reason given')) : 'No') +
+        row('Declared Deadhead', rec['Declared Deadhead Miles'] ? (rec['Declared Deadhead Miles'] + ' mi') : '—') +
+        row('Responsiveness', rec['Responsiveness Rating'] ? (rec['Responsiveness Rating'] + ' / 5') : '—') +
+        row('Loading Time', rec['Loading Time (hrs)'] ? (rec['Loading Time (hrs)'] + ' hrs') : '—') +
+        row('Unloading Time', rec['Unloading Time (hrs)'] ? (rec['Unloading Time (hrs)'] + ' hrs') : '—') +
+        row('Trip Distance (est.)', rec['Trip Distance Miles'] ? (rec['Trip Distance Miles'] + ' mi') : '—') +
+        row('Trip Time (est.)', rec['Estimated Trip Time (hrs)'] ? (rec['Estimated Trip Time (hrs)'] + ' hrs') : '—') +
       '</div></div>' +
       historyHtml;
   }
