@@ -130,23 +130,30 @@
   .status-text { font-size: 14px; font-weight: 600; }
   #mCompletedDateLabel { font-size: 11px; color: #64748b; }
 
-  .stats-charges-note { font-size: 11px; color: #94a3b8; margin: -4px 0 8px; line-height: 1.4; }
-  .stats-subtotal {
-    font-weight: 600; background: #f8fafc; color: #475569;
-    padding: 10px 12px; border-radius: 12px; text-align: right;
-    border: 1px dashed #cbd5e1; font-size: 13px; margin-top: 4px;
+  .status-segment { display: flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 3px; width: 100%; }
+  .status-seg-btn {
+    flex: 1; font-size: 13px; font-weight: 700; padding: 10px 0; border-radius: 9px;
+    border: none; background: transparent; color: #64748b;
   }
+  .status-seg-btn.active[data-status="Active"] { background: #fff; color: #1e293b; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+  .status-seg-btn.active[data-status="Completed"] { background: #059669; color: #fff; }
+  .status-seg-btn.active[data-status="Cancelled"] { background: #dc2626; color: #fff; }
+
+  #mCancelStatusRow {
+    display: none; flex-direction: column; gap: 8px; margin: 0 0 14px;
+    padding: 8px 12px; background: #fff; border: 1px solid #f1d5d5; border-left: 3px solid #dc2626; border-radius: 8px;
+  }
+  #mCancelStatusRow.open { display: flex; }
+  #mCancelStatusRow label { color: #b91c1c; font-size: 11px; }
+  #mCancelStatusRow select, #mCancelStatusRow input { padding: 8px 10px; }
+
+  .stats-charges-note { font-size: 11px; color: #94a3b8; margin: -4px 0 8px; line-height: 1.4; }
   .rating-row { display: flex; gap: 6px; margin-top: 4px; }
   .rating-pill {
     flex: 1; font-size: 12px; font-weight: 700; padding: 10px 0; border-radius: 10px;
     border: 1.5px solid #e2e8f0; background: #fff; color: #475569;
   }
   .rating-pill.active { background: #d1fae5; border-color: #059669; color: #065f46; }
-  .cancel-row {
-    display: none; flex-direction: column; gap: 10px; margin: 4px 0 16px;
-    padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 14px;
-  }
-  .cancel-row.open { display: flex; }
   .eta-box {
     background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
     padding: 12px; font-size: 12px; color: #334155; margin-bottom: 16px;
@@ -155,6 +162,12 @@
   #mEtaPreviewBtn {
     width: 100%; background: #f1f5f9; color: #334155; padding: 9px; font-size: 12.5px; border-radius: 9px; border: none; font-weight: 600;
   }
+  .dat-compare {
+    font-size: 12px; font-weight: 600; padding: 10px 12px; border-radius: 12px;
+    background: #f8fafc; border: 1px solid #e2e8f0; color: #64748b; margin-bottom: 16px;
+  }
+  .dat-compare.good { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+  .dat-compare.bad  { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
 
   #mPasteBtn {
     width: 100%; background: #fff; color: #065f46; border: 1px dashed #6ee7b7;
@@ -214,6 +227,7 @@
   .badge-revised   { background: #fef3c7; color: #b45309; }
   .badge-type      { background: #ede9fe; color: #6d28d9; }
   .badge-completed { background: #d1fae5; color: #047857; }
+  .badge-cancelled { background: #fee2e2; color: #b91c1c; }
   .empty-state, .no-results { text-align: center; padding: 50px 20px; color: #94a3b8; }
 
   /* ---------- Bottom sheets (detail + paste) ---------- */
@@ -360,12 +374,29 @@
       <button type="button" id="mPasteBtn" onclick="openPasteSheet()">📋 Paste Load Data</button>
 
       <div class="status-strip">
-        <label class="switch">
-          <input type="checkbox" id="mCompleted">
-          <span class="switch-slider"></span>
-        </label>
-        <span class="status-text">Mark as Completed</span>
+        <div class="status-segment" id="mStatusSegment">
+          <button type="button" class="status-seg-btn" data-status="Active" onclick="setLoadStatus('Active')">Active</button>
+          <button type="button" class="status-seg-btn" data-status="Completed" onclick="setLoadStatus('Completed')">Completed</button>
+          <button type="button" class="status-seg-btn" data-status="Cancelled" onclick="setLoadStatus('Cancelled')">Cancelled</button>
+        </div>
         <span id="mCompletedDateLabel"></span>
+        <input type="checkbox" id="mCompleted" style="display:none;">
+        <input type="checkbox" id="mCancelled" style="display:none;">
+      </div>
+
+      <div id="mCancelStatusRow">
+        <div class="field">
+          <label>Cancel Reason <span class="req">*</span></label>
+          <select id="mCancel_Reason_Select" onchange="onCancelReasonSelect()"></select>
+        </div>
+        <div class="field" id="mCancelReasonCustomWrap" style="display:none;">
+          <label>Custom reason (added as a future option)</label>
+          <input id="mCancel_Reason_Custom" placeholder="Type the reason...">
+        </div>
+        <div class="field" id="mCarrierCancelNoticeWrap" style="display:none;">
+          <label>Hours before appointment <span class="req">*</span></label>
+          <input id="mCarrier_Cancel_Notice" type="number" step="0.5" min="0" placeholder="e.g. 2">
+        </div>
       </div>
 
       <h3>Carrier</h3>
@@ -421,33 +452,31 @@
 
       <h3>Rate &amp; Payment</h3>
       <div class="row-2">
-        <div class="field"><label>Line Haul Rate ($) <span class="req">*</span></label><input id="mLine_Haul" type="number" step="0.01" oninput="calcTotal()"></div>
+        <div class="field"><label>Line Haul Rate ($) <span class="req">*</span></label><input id="mLine_Haul" type="number" step="0.01" oninput="calcTotal(); updateDatCompare();"></div>
         <div class="field"><label>Fuel Surcharge ($)</label><input id="mFuel" type="number" step="0.01" oninput="calcTotal()"></div>
       </div>
       <div class="row-2">
         <div class="field"><label>Additional Stops ($)</label><input id="mStops" type="number" step="0.01" oninput="calcTotal()"></div>
         <div class="field"><label>Other ($)</label><input id="mOther" type="number" step="0.01" oninput="calcTotal()"></div>
       </div>
+      <div class="row-2">
+        <div class="field"><label>Detention ($)</label><input id="mDetention_Fee" type="number" step="0.01" oninput="calcTotal()"></div>
+        <div class="field"><label>Layover ($)</label><input id="mLayover_Fee" type="number" step="0.01" oninput="calcTotal()"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Lumper Fee ($)</label><input id="mLumper_Fee" type="number" step="0.01" oninput="calcTotal()"></div>
+        <div class="field"><label>Scale ($)</label><input id="mScale_Fee" type="number" step="0.01" oninput="calcTotal()"></div>
+      </div>
+      <div class="field"><label>Claims ($) <span style="color:#dc2626; font-weight:700;">− deducted</span></label><input id="mClaims" type="number" step="0.01" oninput="calcTotal()"></div>
+      <div class="stats-charges-note">Detention / Layover / Lumper Fee / Scale add to the total; Claims subtracts. This total (incl. these) is what prints on the PDF.</div>
       <div class="total" id="mTotalDisplay">TOTAL: $0.00</div>
-
-      <h3>Additional Charges (stats only)</h3>
-      <div class="stats-charges-note">Recorded for internal reporting only — these do NOT change the Rate Con PDF or its printed total.</div>
-      <div class="row-2">
-        <div class="field"><label>Detention ($)</label><input id="mDetention_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
-        <div class="field"><label>Layover ($)</label><input id="mLayover_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
-      </div>
-      <div class="row-2">
-        <div class="field"><label>Lumper Fee ($)</label><input id="mLumper_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
-        <div class="field"><label>Scale ($)</label><input id="mScale_Fee" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
-      </div>
-      <div class="field"><label>Other ($)</label><input id="mOther_Charges_Stats" type="number" step="0.01" oninput="calcStatsSubtotal()"></div>
-      <div class="stats-subtotal" id="mStatsSubtotalDisplay">Stats subtotal: $0.00</div>
 
       <h3>Analytics (not shown on Rate Con)</h3>
       <div class="row-2">
-        <div class="field"><label>DAT Spot Rate ($)</label><input id="mDAT_Spot_Rate" type="number" step="0.01"></div>
+        <div class="field"><label>DAT Spot Rate ($)</label><input id="mDAT_Spot_Rate" type="number" step="0.01" oninput="updateDatCompare()"></div>
         <div class="field"><label>Declared Deadhead (mi)</label><input id="mDeclared_Deadhead_Miles" type="number" step="1" oninput="clearEtaPreview()"></div>
       </div>
+      <div class="dat-compare" id="mDatCompareBox">Enter a DAT Spot Rate to compare it against the Line Haul Rate.</div>
       <div class="row-2">
         <div class="field"><label>Pickup Late</label><select id="mPickup_Late"></select></div>
         <div class="field"><label>Delivery Late</label><select id="mDelivery_Late"></select></div>
@@ -462,30 +491,34 @@
         <div class="field"><label>Driver Phone</label><input id="mDriver_Phone"></div>
       </div>
 
+      <h3>Documentation</h3>
       <div class="status-strip">
         <label class="switch">
-          <input type="checkbox" id="mCancelled" onchange="toggleCancelRow()">
+          <input type="checkbox" id="mMissing_Photos">
           <span class="switch-slider"></span>
         </label>
-        <span class="status-text">Load was cancelled</span>
+        <span class="status-text">Driver didn't take photos</span>
       </div>
-      <div class="cancel-row" id="mCancelRow">
-        <div class="field">
-          <label>Cancel Reason</label>
-          <select id="mCancel_Reason_Select" onchange="onCancelReasonSelect()"></select>
-        </div>
-        <div class="field" id="mCancelReasonCustomWrap" style="display:none;">
-          <label>Custom reason (added as a future option)</label>
-          <input id="mCancel_Reason_Custom" placeholder="Type the reason...">
-        </div>
+      <div class="status-strip">
+        <label class="switch">
+          <input type="checkbox" id="mMissing_Scale_Ticket">
+          <span class="switch-slider"></span>
+        </label>
+        <span class="status-text">Carrier didn't get a scale ticket</span>
       </div>
 
+      <h3>Trip Time Estimate</h3>
       <div class="row-2">
-        <div class="field"><label>Loading Time (hrs)</label><input id="mLoading_Time_Hrs" type="number" step="0.25" oninput="clearEtaPreview()"></div>
-        <div class="field"><label>Unloading Time (hrs)</label><input id="mUnloading_Time_Hrs" type="number" step="0.25" oninput="clearEtaPreview()"></div>
+        <div class="field"><label>Loading — Hours</label><input id="mLoading_Time_Hours" type="number" step="1" min="0" oninput="clearEtaPreview()"></div>
+        <div class="field"><label>Loading — Minutes</label><input id="mLoading_Time_Minutes" type="number" step="1" min="0" max="59" oninput="clearEtaPreview()"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Unloading — Hours</label><input id="mUnloading_Time_Hours" type="number" step="1" min="0" oninput="clearEtaPreview()"></div>
+        <div class="field"><label>Unloading — Minutes</label><input id="mUnloading_Time_Minutes" type="number" step="1" min="0" max="59" oninput="clearEtaPreview()"></div>
       </div>
       <div class="eta-box">
         <span id="mEtaPreviewText">Trip distance &amp; time are calculated automatically on save (50 mph estimate).</span>
+        <span id="mEtaRpmText"></span>
         <button type="button" id="mEtaPreviewBtn" onclick="previewEta()">Preview ETA</button>
       </div>
 
@@ -634,15 +667,17 @@
     'mLine_Haul': 'Line Haul Rate', 'mFuel': 'Fuel Surcharge', 'mStops': 'Additional Stops', 'mOther': 'Other',
 
     'mDetention_Fee': 'Detention Fee', 'mLayover_Fee': 'Layover Fee', 'mLumper_Fee': 'Lumper Fee',
-    'mScale_Fee': 'Scale Fee', 'mOther_Charges_Stats': 'Other Charges (Stats)',
+    'mScale_Fee': 'Scale Fee', 'mClaims': 'Claims',
 
     'mDAT_Spot_Rate': 'DAT Spot Rate', 'mPickup_Late': 'Pickup Late', 'mDelivery_Late': 'Delivery Late',
     'mDeclared_Deadhead_Miles': 'Declared Deadhead Miles',
-    'mDriver_Name': 'Driver Name', 'mDriver_Phone': 'Driver Phone',
-    'mLoading_Time_Hrs': 'Loading Time (hrs)', 'mUnloading_Time_Hrs': 'Unloading Time (hrs)'
+    'mDriver_Name': 'Driver Name', 'mDriver_Phone': 'Driver Phone'
   };
   // Handled outside FIELD_MAP (custom widgets, not a plain input 1:1 with a
-  // header): mCancelled / mCancel_Reason_Select / mResponsiveness_Rating.
+  // header): the status segmented control (mCompleted/mCancelled/Cancel
+  // Reason), mResponsiveness_Rating, mMissing_Photos/mMissing_Scale_Ticket,
+  // and the Loading/Unloading Hours+Minutes pairs (combined into decimal
+  // hours before being sent).
   var LATE_OPTIONS = ['On Time', 'Late < 30 min', 'Late 30-60 min', 'Late 1-3 hrs', 'Late > 3 hrs'];
 
   function populateLateSelect(id) {
@@ -657,13 +692,54 @@
   populateLateSelect('mPickup_Late');
   populateLateSelect('mDelivery_Late');
 
-  function calcStatsSubtotal() {
-    var t = (parseFloat(document.getElementById('mDetention_Fee').value)||0)
-          + (parseFloat(document.getElementById('mLayover_Fee').value)||0)
-          + (parseFloat(document.getElementById('mLumper_Fee').value)||0)
-          + (parseFloat(document.getElementById('mScale_Fee').value)||0)
-          + (parseFloat(document.getElementById('mOther_Charges_Stats').value)||0);
-    document.getElementById('mStatsSubtotalDisplay').textContent = 'Stats subtotal: $' + t.toFixed(2);
+  /* ---------- Loading/Unloading time: Hours + Minutes <-> decimal hours ---------- */
+  function hoursMinutesToDecimal(hId, mId) {
+    var h = parseFloat(document.getElementById(hId).value) || 0;
+    var m = parseFloat(document.getElementById(mId).value) || 0;
+    return Math.round((h + m / 60) * 100) / 100;
+  }
+  function decimalToHoursMinutes(decimalVal, hId, mId) {
+    var total = Number(decimalVal) || 0;
+    if (!total) { document.getElementById(hId).value = ''; document.getElementById(mId).value = ''; return; }
+    var h = Math.floor(total);
+    var m = Math.round((total - h) * 60);
+    if (m === 60) { h += 1; m = 0; }
+    document.getElementById(hId).value = h;
+    document.getElementById(mId).value = m;
+  }
+  /** Formats decimal hours (e.g. 10.08) as "10 hr 5 min" for display. */
+  function formatHoursText(decimalVal) {
+    var total = Number(decimalVal) || 0;
+    var h = Math.floor(total);
+    var m = Math.round((total - h) * 60);
+    if (m === 60) { h += 1; m = 0; }
+    if (!h && !m) return '0 min';
+    return (h ? h + ' hr' + (h === 1 ? '' : 's') : '') + (h && m ? ' ' : '') + (m ? m + ' min' : '');
+  }
+
+  /* ---------- DAT Spot Rate vs Line Haul Rate ---------- */
+  function updateDatCompare() {
+    var box = document.getElementById('mDatCompareBox');
+    var dat = parseFloat(document.getElementById('mDAT_Spot_Rate').value);
+    var lineHaul = parseFloat(document.getElementById('mLine_Haul').value) || 0;
+    box.classList.remove('good', 'bad');
+    if (!dat || !lineHaul) {
+      box.textContent = 'Enter a DAT Spot Rate to compare it against the Line Haul Rate.';
+      return;
+    }
+    var diff = dat - lineHaul;
+    var pct = (diff / lineHaul) * 100;
+    var absDiff = Math.abs(diff).toFixed(2);
+    var absPct = Math.abs(pct).toFixed(1);
+    if (diff > 0) {
+      box.classList.add('good');
+      box.textContent = 'DAT is $' + absDiff + ' (' + absPct + '%) higher than Line Haul — good margin vs. market.';
+    } else if (diff < 0) {
+      box.classList.add('bad');
+      box.textContent = 'DAT is $' + absDiff + ' (' + absPct + '%) lower than Line Haul — paying above market.';
+    } else {
+      box.textContent = 'DAT Spot Rate matches the Line Haul Rate exactly.';
+    }
   }
 
   function renderRatingPills() {
@@ -710,29 +786,52 @@
     }
     onCancelReasonSelect();
   }
+  var CARRIER_CANCELLATION_REASON = 'Carrier Cancellation';
   function onCancelReasonSelect() {
-    var isCustom = document.getElementById('mCancel_Reason_Select').value === '__custom__';
+    var selVal = document.getElementById('mCancel_Reason_Select').value;
+    var isCustom = selVal === '__custom__';
     document.getElementById('mCancelReasonCustomWrap').style.display = isCustom ? 'flex' : 'none';
+    document.getElementById('mCarrierCancelNoticeWrap').style.display = (selVal === CARRIER_CANCELLATION_REASON) ? 'flex' : 'none';
   }
-  function toggleCancelRow() {
-    document.getElementById('mCancelRow').classList.toggle('open', document.getElementById('mCancelled').checked);
+
+  /* ---------- Load status: Active / Completed / Cancelled (mutually exclusive) ---------- */
+  function setLoadStatus(status) {
+    document.getElementById('mCompleted').checked = (status === 'Completed');
+    document.getElementById('mCancelled').checked = (status === 'Cancelled');
+    refreshStatusUI();
   }
+  function refreshStatusUI() {
+    var completed = document.getElementById('mCompleted').checked;
+    var cancelled = document.getElementById('mCancelled').checked;
+    var status = cancelled ? 'Cancelled' : (completed ? 'Completed' : 'Active');
+    document.querySelectorAll('#mStatusSegment .status-seg-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.status === status);
+    });
+    document.getElementById('mCancelStatusRow').classList.toggle('open', cancelled);
+    if (!completed) updateCompletedDateLabel('');
+  }
+  refreshStatusUI();
 
   function clearEtaPreview() {
     document.getElementById('mEtaPreviewText').textContent = 'Trip distance & time are calculated automatically on save (50 mph estimate).';
+    document.getElementById('mEtaRpmText').textContent = '';
   }
   function previewEta() {
     var el = document.getElementById('mEtaPreviewText');
+    var rpmEl = document.getElementById('mEtaRpmText');
     el.textContent = 'Calculating…';
+    rpmEl.textContent = '';
     apiGet('estimateTripDetails', {
       shipperCity: val('mShipper_City'),
       consigneeCity: val('mConsignee_City'),
-      loadingHrs: val('mLoading_Time_Hrs'),
-      unloadingHrs: val('mUnloading_Time_Hrs'),
-      deadheadMiles: val('mDeclared_Deadhead_Miles')
+      loadingHrs: hoursMinutesToDecimal('mLoading_Time_Hours', 'mLoading_Time_Minutes'),
+      unloadingHrs: hoursMinutesToDecimal('mUnloading_Time_Hours', 'mUnloading_Time_Minutes'),
+      deadheadMiles: val('mDeclared_Deadhead_Miles'),
+      lineHaulRate: val('mLine_Haul')
     }).then(function(res) {
       var milesTxt = (res.tripMiles === '' || res.tripMiles === null) ? "unknown (couldn't look up the route)" : (res.tripMiles + ' mi');
-      el.textContent = 'Est. distance: ' + milesTxt + ' · Est. time: ' + res.estimatedHours + ' hrs';
+      el.textContent = 'Est. distance: ' + milesTxt + ' · Est. time: ' + formatHoursText(res.estimatedHours);
+      rpmEl.textContent = (res.rpm === '' || res.rpm === null) ? '' : ('RPM: $' + res.rpm + '/mi (loaded miles, excl. deadhead)');
     }).catch(function(err) {
       el.textContent = 'Could not estimate: ' + err.message;
     });
@@ -854,7 +953,12 @@
     var t = (parseFloat(document.getElementById('mLine_Haul').value)||0)
           + (parseFloat(document.getElementById('mFuel').value)||0)
           + (parseFloat(document.getElementById('mStops').value)||0)
-          + (parseFloat(document.getElementById('mOther').value)||0);
+          + (parseFloat(document.getElementById('mOther').value)||0)
+          + (parseFloat(document.getElementById('mDetention_Fee').value)||0)
+          + (parseFloat(document.getElementById('mLayover_Fee').value)||0)
+          + (parseFloat(document.getElementById('mLumper_Fee').value)||0)
+          + (parseFloat(document.getElementById('mScale_Fee').value)||0)
+          - (parseFloat(document.getElementById('mClaims').value)||0);
     document.getElementById('mTotalDisplay').textContent = 'TOTAL: $' + t.toFixed(2);
   }
   function val(id){ return document.getElementById(id).value; }
@@ -930,9 +1034,6 @@
   function updateCompletedDateLabel(d) {
     document.getElementById('mCompletedDateLabel').textContent = d ? ('Completed on ' + d) : '';
   }
-  document.getElementById('mCompleted').addEventListener('change', function(){
-    if (!this.checked) updateCompletedDateLabel('');
-  });
 
   /* ================= Revise / load existing record ================= */
   function applyRevisionRecord(rec) {
@@ -951,23 +1052,35 @@
     calcTotal();
     loadStops('Pickup', rec['Pickup Extra Stops']);
     loadStops('Delivery', rec['Delivery Extra Stops']);
+
     document.getElementById('mCompleted').checked =
       (rec['Completed'] === true || rec['Completed'] === 'TRUE' || rec['Completed'] === 'true');
-    updateCompletedDateLabel(rec['Completed Date']);
-
     document.getElementById('mCancelled').checked =
       (rec['Cancelled'] === true || rec['Cancelled'] === 'TRUE' || rec['Cancelled'] === 'true');
-    toggleCancelRow();
+    updateCompletedDateLabel(rec['Completed Date']);
+    refreshStatusUI();
+
     if (cancelReasonList.length) {
       renderCancelReasonSelect(rec['Cancel Reason'] || '');
     } else {
       pendingCancelReasonValue = rec['Cancel Reason'] || '';
       document.getElementById('mCancel_Reason_Custom').value = rec['Cancel Reason'] || '';
     }
+    document.getElementById('mCarrier_Cancel_Notice').value = rec['Carrier Cancel Notice (hrs before appt)'] || '';
     document.getElementById('mResponsiveness_Rating').value = rec['Responsiveness Rating'] || '';
     renderRatingPills();
-    calcStatsSubtotal();
+
+    document.getElementById('mMissing_Photos').checked =
+      (rec['Missing Photos'] === true || rec['Missing Photos'] === 'TRUE' || rec['Missing Photos'] === 'true');
+    document.getElementById('mMissing_Scale_Ticket').checked =
+      (rec['Missing Scale Ticket'] === true || rec['Missing Scale Ticket'] === 'TRUE' || rec['Missing Scale Ticket'] === 'true');
+
+    decimalToHoursMinutes(rec['Loading Time (hrs)'], 'mLoading_Time_Hours', 'mLoading_Time_Minutes');
+    decimalToHoursMinutes(rec['Unloading Time (hrs)'], 'mUnloading_Time_Hours', 'mUnloading_Time_Minutes');
+
+    updateDatCompare();
     clearEtaPreview();
+    document.getElementById('mEtaRpmText').textContent = rec['RPM ($/mi)'] ? ('Stored RPM: $' + rec['RPM ($/mi)'] + '/mi (loaded miles, excl. deadhead)') : '';
 
     document.getElementById('mModeBanner').style.display = 'block';
     document.getElementById('mModeRateCon').textContent = rec['Load #'];
@@ -1040,6 +1153,12 @@
         document.getElementById('mCancel_Reason_Select').scrollIntoView({ block: 'center', behavior: 'smooth' });
         return;
       }
+      if (selVal === CARRIER_CANCELLATION_REASON && !val('mCarrier_Cancel_Notice')) {
+        var m3 = document.getElementById('mFormMsg'); m3.style.color = '#d93025';
+        m3.textContent = 'Please enter how many hours before the appointment the carrier cancelled.';
+        document.getElementById('mCarrier_Cancel_Notice').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
     }
     var data = {};
     for (var fid in FIELD_MAP) { data[FIELD_MAP[fid]] = val(fid); }
@@ -1052,7 +1171,13 @@
     data['Cancel Reason'] = data['Cancelled']
       ? (cancelSelectVal === '__custom__' ? val('mCancel_Reason_Custom').trim() : cancelSelectVal)
       : '';
+    data['Carrier Cancel Notice (hrs before appt)'] =
+      (data['Cancel Reason'] === CARRIER_CANCELLATION_REASON) ? val('mCarrier_Cancel_Notice') : '';
     data['Responsiveness Rating'] = val('mResponsiveness_Rating');
+    data['Missing Photos'] = document.getElementById('mMissing_Photos').checked;
+    data['Missing Scale Ticket'] = document.getElementById('mMissing_Scale_Ticket').checked;
+    data['Loading Time (hrs)'] = hoursMinutesToDecimal('mLoading_Time_Hours', 'mLoading_Time_Minutes');
+    data['Unloading Time (hrs)'] = hoursMinutesToDecimal('mUnloading_Time_Hours', 'mUnloading_Time_Minutes');
 
     var btn = document.getElementById('mSaveBtn'); btn.disabled = true;
     var msg = document.getElementById('mFormMsg'); msg.style.color = '#5f6368'; msg.textContent = revisingRow ? 'Updating…' : 'Generating…';
@@ -1081,17 +1206,22 @@
       if (id === 'mPickup_Late' || id === 'mDelivery_Late') { document.getElementById(id).value = 'On Time'; continue; }
       document.getElementById(id).value = '';
     }
-    document.getElementById('mCompleted').checked = false;
-    updateCompletedDateLabel('');
     clearStops('Pickup'); clearStops('Delivery'); calcTotal();
-    calcStatsSubtotal();
+    updateDatCompare();
 
-    document.getElementById('mCancelled').checked = false;
-    toggleCancelRow();
+    setLoadStatus('Active');
+    updateCompletedDateLabel('');
     renderCancelReasonSelect('');
     document.getElementById('mCancel_Reason_Custom').value = '';
+    document.getElementById('mCarrier_Cancel_Notice').value = '';
     document.getElementById('mResponsiveness_Rating').value = '';
     renderRatingPills();
+    document.getElementById('mMissing_Photos').checked = false;
+    document.getElementById('mMissing_Scale_Ticket').checked = false;
+    document.getElementById('mLoading_Time_Hours').value = '';
+    document.getElementById('mLoading_Time_Minutes').value = '';
+    document.getElementById('mUnloading_Time_Hours').value = '';
+    document.getElementById('mUnloading_Time_Minutes').value = '';
     clearEtaPreview();
   }
   function resetForm() {
@@ -1273,7 +1403,8 @@
       if (l.loadType) badges += '<span class="badge badge-type">' + escHtml(String(l.loadType).toUpperCase()) + '</span>';
       if (l.status==='Revised') badges += '<span class="badge badge-revised">REVISED' + (l.revisions>0?' ×'+escHtml(l.revisions):'') + '</span>';
       else if (l.status) badges += '<span class="badge badge-generated">' + escHtml(String(l.status).toUpperCase()) + '</span>';
-      if (l.completed) badges += '<span class="badge badge-completed">DONE</span>';
+      if (l.cancelled) badges += '<span class="badge badge-cancelled">CANCELLED</span>';
+      else if (l.completed) badges += '<span class="badge badge-completed">DONE</span>';
       var loadNumEsc = escHtml(String(l.loadNum).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
       return '<div class="load-card" onclick="openDetailSheet(\'' + loadNumEsc + '\')">' +
         '<div class="avatar" style="background:' + color + '">' + escHtml(initials) + '</div>' +
@@ -1320,20 +1451,22 @@
     document.getElementById('mDetailAvatar').textContent = getInitials(carrier);
     document.getElementById('mDetailTitle').textContent = 'Load #' + rec['Load #'];
     var isCompleted = (rec['Completed']===true || rec['Completed']==='TRUE');
+    var isCancelled = (rec['Cancelled']===true || rec['Cancelled']==='TRUE');
     var loadNumEsc = escHtml(String(rec['Load #']).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
     var revCount = Number(rec['Revision Count']) || 0;
 
     var actions =
       '<div class="detail-actions">' +
         '<button class="act-edit" onclick="editFromDetail(\'' + loadNumEsc + '\')">Edit</button>' +
-        '<button class="act-complete" onclick="toggleCompleteFromDetail(\'' + loadNumEsc + '\', ' + (!isCompleted) + ')">' + (isCompleted?'Undo':'Complete') + '</button>' +
+        (isCancelled ? '' : '<button class="act-complete" onclick="toggleCompleteFromDetail(\'' + loadNumEsc + '\', ' + (!isCompleted) + ')">' + (isCompleted?'Undo':'Complete') + '</button>') +
         '<button class="act-delete" onclick="deleteFromDetail(\'' + loadNumEsc + '\')">Delete</button>' +
       '</div>';
 
     var statusBadge = '';
     if (rec['Status'] === 'Revised') statusBadge = '<span class="badge badge-revised">REVISED' + (revCount > 0 ? ' ×' + revCount : '') + '</span>';
     else if (rec['Status']) statusBadge = '<span class="badge badge-generated">' + escHtml(String(rec['Status']).toUpperCase()) + '</span>';
-    if (isCompleted) statusBadge += ' <span class="badge badge-completed">COMPLETED</span>';
+    if (isCancelled) statusBadge += ' <span class="badge badge-cancelled">CANCELLED</span>';
+    else if (isCompleted) statusBadge += ' <span class="badge badge-completed">COMPLETED</span>';
 
     // Only render the link if it's a real https URL, and escape it — a
     // poisoned sheet cell must not be able to inject markup or a
@@ -1391,26 +1524,29 @@
       '<div class="detail-section"><div class="detail-section-label">Delivery</div><div class="detail-rows">' +
         row('Consignee', rec['Consignee Name']) + row('City', rec['Consignee City']) + row('Date', rec['Delivery Date']) + row('Time', rec['Delivery Time']) +
       '</div></div>' +
-      '<div class="detail-section"><div class="detail-section-label">Rate</div><div class="detail-rows">' +
+      '<div class="detail-section"><div class="detail-section-label">Rate &amp; Payment</div><div class="detail-rows">' +
         row('Line Haul', money2(rec['Line Haul Rate'])) + row('Fuel Surcharge', money2(rec['Fuel Surcharge'])) +
-        '<div class="detail-row"><span class="detail-row-label"><b>Total</b></span><span class="detail-row-value" style="color:#065f46;">' + money2(rec['Total Rate']) + '</span></div>' +
-      '</div></div>' +
-      '<div class="detail-section"><div class="detail-section-label">Additional Charges (stats only)</div><div class="detail-rows">' +
+        row('Additional Stops', money2(rec['Additional Stops'])) + row('Other', money2(rec['Other'])) +
         row('Detention', money2(rec['Detention Fee'])) + row('Layover', money2(rec['Layover Fee'])) +
         row('Lumper Fee', money2(rec['Lumper Fee'])) + row('Scale', money2(rec['Scale Fee'])) +
-        row('Other', money2(rec['Other Charges (Stats)'])) +
-        '<div class="detail-row"><span class="detail-row-label"><b>Subtotal</b></span><span class="detail-row-value">' + money2(rec['Additional Charges Total']) + '</span></div>' +
+        row('Claims (deducted)', money2(rec['Claims'])) +
+        '<div class="detail-row"><span class="detail-row-label"><b>Total</b></span><span class="detail-row-value" style="color:#065f46;">' + money2(rec['Total Rate']) + '</span></div>' +
       '</div></div>' +
       '<div class="detail-section"><div class="detail-section-label">Load Analytics</div><div class="detail-rows">' +
         row('DAT Spot Rate', rec['DAT Spot Rate'] ? money2(rec['DAT Spot Rate']) : '—') +
         row('Pickup Late', rec['Pickup Late'] || '—') + row('Delivery Late', rec['Delivery Late'] || '—') +
-        row('Cancelled', (rec['Cancelled'] === true || rec['Cancelled'] === 'TRUE') ? ('Yes — ' + (rec['Cancel Reason'] || 'no reason given')) : 'No') +
         row('Declared Deadhead', rec['Declared Deadhead Miles'] ? (rec['Declared Deadhead Miles'] + ' mi') : '—') +
         row('Responsiveness', rec['Responsiveness Rating'] ? (rec['Responsiveness Rating'] + ' / 5') : '—') +
-        row('Loading Time', rec['Loading Time (hrs)'] ? (rec['Loading Time (hrs)'] + ' hrs') : '—') +
-        row('Unloading Time', rec['Unloading Time (hrs)'] ? (rec['Unloading Time (hrs)'] + ' hrs') : '—') +
+        row('Loading Time', rec['Loading Time (hrs)'] ? formatHoursText(rec['Loading Time (hrs)']) : '—') +
+        row('Unloading Time', rec['Unloading Time (hrs)'] ? formatHoursText(rec['Unloading Time (hrs)']) : '—') +
         row('Trip Distance (est.)', rec['Trip Distance Miles'] ? (rec['Trip Distance Miles'] + ' mi') : '—') +
-        row('Trip Time (est.)', rec['Estimated Trip Time (hrs)'] ? (rec['Estimated Trip Time (hrs)'] + ' hrs') : '—') +
+        row('Trip Time (est.)', rec['Estimated Trip Time (hrs)'] ? formatHoursText(rec['Estimated Trip Time (hrs)']) : '—') +
+        row('RPM', rec['RPM ($/mi)'] ? ('$' + rec['RPM ($/mi)'] + '/mi (loaded miles, excl. deadhead)') : '—') +
+        row('Missing Photos', (rec['Missing Photos'] === true || rec['Missing Photos'] === 'TRUE') ? 'Yes' : 'No') +
+        row('Missing Scale Ticket', (rec['Missing Scale Ticket'] === true || rec['Missing Scale Ticket'] === 'TRUE') ? 'Yes' : 'No') +
+        (isCancelled ? row('Cancel Reason', rec['Cancel Reason'] || 'no reason given') : '') +
+        (isCancelled && rec['Cancel Reason'] === 'Carrier Cancellation' && rec['Carrier Cancel Notice (hrs before appt)']
+          ? row('Notice Before Appt', rec['Carrier Cancel Notice (hrs before appt)'] + ' hrs') : '') +
       '</div></div>' +
       historyHtml;
   }
