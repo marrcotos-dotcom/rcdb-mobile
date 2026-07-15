@@ -199,6 +199,21 @@
   #mFormMsg { font-size: 13px; font-weight: 600; padding: 0 16px 10px; min-height: 18px; }
 
   /* ---------- Loads list ---------- */
+  .status-tabs { display: flex; gap: 2px; padding: 10px 10px 0; overflow-x: auto; }
+  .status-tab-btn {
+    flex: 1; min-width: 68px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    font-family: inherit; font-size: 11.5px; font-weight: 700;
+    padding: 10px 4px; border: none; border-bottom: 2.5px solid transparent;
+    background: transparent; color: #64748b;
+  }
+  .status-tab-btn .tab-count { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: #f1f5f9; color: #64748b; }
+  .status-tab-btn.active { color: #1e293b; }
+  .status-tab-btn.active[data-tab="Active"]    { color: #1e293b; border-bottom-color: #1e293b; }
+  .status-tab-btn.active[data-tab="Completed"] { color: #047857; border-bottom-color: #059669; }
+  .status-tab-btn.active[data-tab="Cancelled"] { color: #b91c1c; border-bottom-color: #dc2626; }
+  .status-tab-btn.active[data-tab="Billed"]    { color: #5b21b6; border-bottom-color: #7c3aed; }
+  .status-tab-btn.active .tab-count { background: currentColor; color: #fff; }
   .search-wrap { padding: 12px 14px 4px; }
   .search-input {
     width: 100%; padding: 11px 14px 11px 40px; border: 1.5px solid #e2e8f0; border-radius: 12px;
@@ -228,6 +243,7 @@
   .badge-type      { background: #ede9fe; color: #6d28d9; }
   .badge-completed { background: #d1fae5; color: #047857; }
   .badge-cancelled { background: #fee2e2; color: #b91c1c; }
+  .badge-billed    { background: #ede9fe; color: #5b21b6; }
   .empty-state, .no-results { text-align: center; padding: 50px 20px; color: #94a3b8; }
 
   /* ---------- Bottom sheets (detail + paste) ---------- */
@@ -249,6 +265,7 @@
   }
   .act-edit { background: #e0f2fe; color: #0284c7; }
   .act-complete { background: #d1fae5; color: #047857; }
+  .act-bill { background: #ede9fe; color: #5b21b6; }
   .act-delete { background: #fee2e2; color: #dc2626; }
   .detail-section { margin-top: 14px; }
   .detail-section-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; }
@@ -267,6 +284,8 @@
   .history-action.act-completed   { background: #d1fae5; color: #047857; }
   .history-action.act-uncompleted { background: #f1f5f9; color: #64748b; }
   .history-action.act-deleted     { background: #fee2e2; color: #dc2626; }
+  .history-action.act-billed      { background: #ede9fe; color: #5b21b6; }
+  .history-action.act-unbilled    { background: #f1f5f9; color: #64748b; }
   .history-when { color: #94a3b8; font-size: 11px; }
   .history-user { color: #94a3b8; font-size: 11px; margin-left: auto; font-weight: 600; }
   .history-changes { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
@@ -535,6 +554,12 @@
     <div class="topbar">
       <button class="iconbtn" onclick="goHome()"><span class="material-icons-round">arrow_back</span></button>
       <div class="topbar-title">Manage Loads</div>
+    </div>
+    <div class="status-tabs" id="mStatusTabs">
+      <button type="button" class="status-tab-btn active" data-tab="Active" onclick="switchLoadsTab('Active')">Active <span class="tab-count" id="mTabCountActive">0</span></button>
+      <button type="button" class="status-tab-btn" data-tab="Completed" onclick="switchLoadsTab('Completed')">Completed <span class="tab-count" id="mTabCountCompleted">0</span></button>
+      <button type="button" class="status-tab-btn" data-tab="Cancelled" onclick="switchLoadsTab('Cancelled')">Cancelled <span class="tab-count" id="mTabCountCancelled">0</span></button>
+      <button type="button" class="status-tab-btn" data-tab="Billed" onclick="switchLoadsTab('Billed')">Billed <span class="tab-count" id="mTabCountBilled">0</span></button>
     </div>
     <div class="search-wrap">
       <input class="search-input" id="mSearchInput" placeholder="Search Load #, carrier, city…" oninput="filterLoads(this.value)">
@@ -1383,10 +1408,40 @@
   function getInitials(n){ if(!n) return '?'; return n.split(' ').filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase()||'?'; }
   function money(n){ return '$' + Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
+  var currentLoadsTab = 'Active';
+
+  function matchesLoadsTab(l, tab) {
+    if (tab === 'Cancelled') return !!l.cancelled;
+    if (tab === 'Billed')    return !!l.billed;
+    if (tab === 'Completed') return !l.cancelled && !!l.completed;
+    return !l.cancelled && !l.completed; // Active
+  }
+
+  function updateLoadsTabCounts() {
+    var counts = { Active: 0, Completed: 0, Cancelled: 0, Billed: 0 };
+    allLoads.forEach(function(l) {
+      ['Active','Completed','Cancelled','Billed'].forEach(function(t) {
+        if (matchesLoadsTab(l, t)) counts[t]++;
+      });
+    });
+    document.getElementById('mTabCountActive').textContent = counts.Active;
+    document.getElementById('mTabCountCompleted').textContent = counts.Completed;
+    document.getElementById('mTabCountCancelled').textContent = counts.Cancelled;
+    document.getElementById('mTabCountBilled').textContent = counts.Billed;
+  }
+
+  function switchLoadsTab(tab) {
+    currentLoadsTab = tab;
+    document.querySelectorAll('#mStatusTabs .status-tab-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    filterLoads(document.getElementById('mSearchInput').value);
+  }
+
   function loadAllLoads() {
     document.getElementById('mLoadsList').innerHTML = '<div class="spinner"></div>';
     apiGet('getAllLoadsForView')
-      .then(function(loads){ allLoads = loads || []; renderLoadsList(allLoads); })
+      .then(function(loads){ allLoads = loads || []; switchLoadsTab(currentLoadsTab); })
       .catch(function(err){ document.getElementById('mLoadsList').innerHTML = '<div class="no-results">Error: ' + escHtml(err.message) + '</div>'; });
   }
   function renderLoadsList(loads) {
@@ -1405,6 +1460,7 @@
       else if (l.status) badges += '<span class="badge badge-generated">' + escHtml(String(l.status).toUpperCase()) + '</span>';
       if (l.cancelled) badges += '<span class="badge badge-cancelled">CANCELLED</span>';
       else if (l.completed) badges += '<span class="badge badge-completed">DONE</span>';
+      if (l.billed) badges += '<span class="badge badge-billed">BILLED</span>';
       var loadNumEsc = escHtml(String(l.loadNum).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
       return '<div class="load-card" onclick="openDetailSheet(\'' + loadNumEsc + '\')">' +
         '<div class="avatar" style="background:' + color + '">' + escHtml(initials) + '</div>' +
@@ -1420,9 +1476,11 @@
   function filterLoads(q) {
     q = q.toLowerCase();
     var filtered = allLoads.filter(function(l){
+      if (!matchesLoadsTab(l, currentLoadsTab)) return false;
       return [l.loadNum,l.pro,l.carrier,l.shipperCity,l.shipperName,l.consigneeCity,l.consigneeName,l.loadType]
         .some(function(f){ return f && String(f).toLowerCase().includes(q); });
     });
+    updateLoadsTabCounts();
     renderLoadsList(filtered);
   }
 
@@ -1452,6 +1510,7 @@
     document.getElementById('mDetailTitle').textContent = 'Load #' + rec['Load #'];
     var isCompleted = (rec['Completed']===true || rec['Completed']==='TRUE');
     var isCancelled = (rec['Cancelled']===true || rec['Cancelled']==='TRUE');
+    var isBilled = (rec['Billed']===true || rec['Billed']==='TRUE');
     var loadNumEsc = escHtml(String(rec['Load #']).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
     var revCount = Number(rec['Revision Count']) || 0;
 
@@ -1459,6 +1518,7 @@
       '<div class="detail-actions">' +
         '<button class="act-edit" onclick="editFromDetail(\'' + loadNumEsc + '\')">Edit</button>' +
         (isCancelled ? '' : '<button class="act-complete" onclick="toggleCompleteFromDetail(\'' + loadNumEsc + '\', ' + (!isCompleted) + ')">' + (isCompleted?'Undo':'Complete') + '</button>') +
+        (isCancelled || !isCompleted ? '' : '<button class="act-bill" onclick="toggleBilledFromDetail(\'' + loadNumEsc + '\', ' + (!isBilled) + ')">' + (isBilled?'Unbill':'Bill') + '</button>') +
         '<button class="act-delete" onclick="deleteFromDetail(\'' + loadNumEsc + '\')">Delete</button>' +
       '</div>';
 
@@ -1467,6 +1527,7 @@
     else if (rec['Status']) statusBadge = '<span class="badge badge-generated">' + escHtml(String(rec['Status']).toUpperCase()) + '</span>';
     if (isCancelled) statusBadge += ' <span class="badge badge-cancelled">CANCELLED</span>';
     else if (isCompleted) statusBadge += ' <span class="badge badge-completed">COMPLETED</span>';
+    if (isBilled) statusBadge += ' <span class="badge badge-billed">BILLED</span>';
 
     // Only render the link if it's a real https URL, and escape it — a
     // poisoned sheet cell must not be able to inject markup or a
@@ -1479,7 +1540,7 @@
     var historyHtml = '';
     var hist = rec['_history'] || [];
     if (hist.length) {
-      var actClassMap = { 'Created':'act-created', 'Revised':'act-revised', 'Completed':'act-completed', 'Uncompleted':'act-uncompleted', 'Deleted':'act-deleted' };
+      var actClassMap = { 'Created':'act-created', 'Revised':'act-revised', 'Completed':'act-completed', 'Uncompleted':'act-uncompleted', 'Deleted':'act-deleted', 'Billed':'act-billed', 'Unbilled':'act-unbilled' };
       historyHtml =
         '<div class="detail-section"><div class="detail-section-label">History' +
           (revCount > 0 ? ' — revised ' + revCount + ' time' + (revCount === 1 ? '' : 's') : '') +
@@ -1559,6 +1620,11 @@
   }
   function toggleCompleteFromDetail(loadNum, newCompleted) {
     apiPost('setLoadCompleted', { loadNum: loadNum, completed: newCompleted })
+      .then(function(){ openDetailSheet(loadNum); loadAllLoads(); })
+      .catch(function(err){ alert('Could not update: ' + err.message); });
+  }
+  function toggleBilledFromDetail(loadNum, newBilled) {
+    apiPost('setLoadBilled', { loadNum: loadNum, billed: newBilled })
       .then(function(){ openDetailSheet(loadNum); loadAllLoads(); })
       .catch(function(err){ alert('Could not update: ' + err.message); });
   }
